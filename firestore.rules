@@ -1,0 +1,134 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Global Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Validation Helpers ---
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['id', 'name', 'email', 'avatar', 'isHost', 'createdAt'])
+        && data.keys().size() == 6
+        && data.id == request.auth.uid
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.email is string && data.email.size() > 3 && data.email.size() <= 100
+        && data.avatar is string && data.avatar.size() <= 1000
+        && data.isHost is bool
+        && data.createdAt is string && data.createdAt.size() <= 50;
+    }
+
+    function isValidListing(data) {
+      return data.keys().hasAll(['id', 'title', 'description', 'price', 'location', 'images', 'amenities', 'rating', 'hostId', 'hostName', 'hostImage', 'createdAt', 'maxGuests', 'bedrooms', 'bathrooms', 'type'])
+        && data.keys().size() == 16
+        && data.id is string && data.id.size() <= 128
+        && data.title is string && data.title.size() > 0 && data.title.size() <= 150
+        && data.description is string && data.description.size() > 0 && data.description.size() <= 5000
+        && data.price is int && data.price > 0 && data.price <= 1000000
+        && data.location is string && data.location.size() > 0 && data.location.size() <= 200
+        && data.images is list && data.images.size() <= 20
+        && data.images.size() > 0 && data.images[0] is string
+        && data.amenities is list && data.amenities.size() <= 50
+        && data.rating is number && data.rating >= 0 && data.rating <= 5
+        && data.hostId == request.auth.uid
+        && data.hostName is string && data.hostName.size() > 0
+        && data.hostImage is string
+        && data.createdAt is string
+        && data.maxGuests is int && data.maxGuests > 0 && data.maxGuests <= 100
+        && data.bedrooms is int && data.bedrooms >= 0 && data.bedrooms <= 50
+        && data.bathrooms is int && data.bathrooms >= 0 && data.bathrooms <= 50
+        && data.type is string;
+    }
+
+    function isValidBooking(data) {
+      return data.keys().hasAll(['id', 'listingId', 'listingTitle', 'listingImage', 'guestId', 'guestName', 'startDate', 'endDate', 'totalPrice', 'guestsCount', 'status', 'createdAt'])
+        && data.keys().size() == 12
+        && data.id is string && data.id.size() <= 128
+        && data.listingId is string && data.listingId.size() <= 128
+        && data.listingTitle is string && data.listingTitle.size() > 0
+        && data.listingImage is string
+        && data.guestId == request.auth.uid
+        && data.guestName is string && data.guestName.size() > 0
+        && data.startDate is string && data.startDate.size() == 10
+        && data.endDate is string && data.endDate.size() == 10
+        && data.totalPrice is int && data.totalPrice >= 0
+        && data.guestsCount is int && data.guestsCount > 0
+        && data.status in ['pending', 'confirmed', 'cancelled']
+        && data.createdAt is string;
+    }
+
+    // --- Rules for collections ---
+
+    // 1. Users
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if false; // Blanket reads blocked; query is disallowed or requires explicit filter
+      allow create: if isSignedIn() && isOwner(userId) && isValidUser(incoming());
+      allow update: if isSignedIn() && isOwner(userId) && isValidUser(incoming())
+        && incoming().createdAt == existing().createdAt; // createdAt is immortal
+      allow delete: if false; // Deletion not allowed by clients
+    }
+
+    // 2. Listings
+    match /listings/{listingId} {
+      allow read: if true; // Public read access so anyone can search properties
+      allow create: if isSignedIn() && isValidId(listingId) && isValidListing(incoming());
+      allow update: if isSignedIn() && isValidListing(incoming())
+        && existing().hostId == request.auth.uid // must be owner
+        && incoming().hostId == existing().hostId // immortal hostId
+        && incoming().createdAt == existing().createdAt; // immortal createdAt
+      allow delete: if isSignedIn() && existing().hostId == request.auth.uid;
+    }
+
+    // 3. Bookings
+    match /bookings/{bookingId} {
+      allow get: if isSignedIn() && (existing().guestId == request.auth.uid || get(/databases/$(database)/documents/listings/$(existing().listingId)).data.hostId == request.auth.uid);
+      
+      allow list: if isSignedIn() && (
+        resource.data.guestId == request.auth.uid 
+        || get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.hostId == request.auth.uid
+      );
+
+      allow create: if isSignedIn() && isValidId(bookingId) && isValidBooking(incoming())
+        // Enforce parent reference exists
+        && exists(/databases/$(database)/documents/listings/$(incoming().listingId));
+
+      allow update: if isSignedIn() && isValidBooking(incoming())
+        && (
+          // Guest can cancel their own booking
+          (existing().guestId == request.auth.uid && incoming().status == 'cancelled' && incoming().diff(existing()).affectedKeys().hasOnly(['status'])) 
+          || 
+          // Host can update status (confirm or cancel)
+          (get(/databases/$(database)/documents/listings/$(existing().listingId)).data.hostId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['status']))
+        )
+        && incoming().guestId == existing().guestId // guestId immutable
+        && incoming().listingId == existing().listingId // listingId immutable
+        && incoming().id == existing().id; // id immutable
+
+      allow delete: if false; // Deletion not allowed; use cancelled status instead
+    }
+  }
+}

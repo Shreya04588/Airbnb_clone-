@@ -1,0 +1,6 @@
+{
+  "name": "Airbnb Clone",
+  "description": "A high-fidelity Airbnb Clone featuring interactive property listings, advanced category filtering, an integrated date-picker booking engine, and user listing/booking dashboards.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

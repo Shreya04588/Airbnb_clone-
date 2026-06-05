@@ -1,0 +1,76 @@
+{
+  "entities": {
+    "Listing": {
+      "title": "Property Listing",
+      "description": "A rental property listed on Airbnb Clone",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "price": { "type": "integer" },
+        "location": { "type": "string" },
+        "images": { "type": "array" },
+        "amenities": { "type": "array" },
+        "rating": { "type": "number" },
+        "hostId": { "type": "string" },
+        "hostName": { "type": "string" },
+        "hostImage": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "maxGuests": { "type": "integer" },
+        "bedrooms": { "type": "integer" },
+        "bathrooms": { "type": "integer" },
+        "type": { "type": "string" }
+      },
+      "required": ["id", "title", "description", "price", "location", "images", "hostId", "hostName"]
+    },
+    "Booking": {
+      "title": "Property Booking",
+      "description": "A reservation made for a specific listing",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "listingId": { "type": "string" },
+        "listingTitle": { "type": "string" },
+        "listingImage": { "type": "string" },
+        "guestId": { "type": "string" },
+        "guestName": { "type": "string" },
+        "startDate": { "type": "string" },
+        "endDate": { "type": "string" },
+        "totalPrice": { "type": "integer" },
+        "guestsCount": { "type": "integer" },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "cancelled"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "listingId", "guestId", "startDate", "endDate", "totalPrice", "status"]
+    },
+    "User": {
+      "title": "User Profile",
+      "description": "Information about users and hosts",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "avatar": { "type": "string" },
+        "isHost": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "email"]
+    }
+  },
+  "firestore": {
+    "/listings/{listingId}": {
+      "schema": "Listing",
+      "description": "Collection of all property listings available on the platform"
+    },
+    "/bookings/{bookingId}": {
+      "schema": "Booking",
+      "description": "Collection of all accommodation reservations"
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Collection of user profiles"
+    }
+  }
+}
